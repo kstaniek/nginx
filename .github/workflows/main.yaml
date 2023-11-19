@@ -1,0 +1,59 @@
+name: Build nginx
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform:
+          - linux-amd64
+      
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        
+      - name: Export version to variable
+        run: echo "NGINX_VERISON=$(cat version)" >> $GITHUB_ENV
+
+      - name: Export build options
+        run: echo "BUILD_OPTIONS=$(cat build_options)" >> $GITHUB_ENV
+
+      - name: Install prerequisits
+        run: |
+          sudo apt install -y git wget
+          sudo apt install -y build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev libgd-dev libxml2 libxml2-dev uuid-dev
+        
+      - name: Build
+        env:
+          _NGINX_VERSION: ${{ env.NGINX_VERISON }}
+          _BUILD_OPTIONS: ${{ env.BUILD_OPTIONS }}
+        run: |
+          wget -O - "https://nginx.org/download/nginx-$_NGINX_VERSION.tar.gz" | tar -xzf -
+          cd "nginx-$_NGINX_VERSION"
+          ./configure $_BUILD_OPTIONS
+          make
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: nginx-${{ env.NGINX_VERISON }}/objs/nginx
+          asset_name: nginx-${{ matrix.platform }}
+          #tag: ${{ github.ref }}
+          tag: ${{ env.NGINX_VERISON }}
+          overwrite: true
+          body: |
+            Nginx v${{ env.NGINX_VERISON }} build for ${{ matrix.platform }}.
+            Build options: ${{ env.BUILD_OPTIONS }}
+
